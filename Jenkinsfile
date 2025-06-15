@@ -1,6 +1,8 @@
 // Jenkinsfile
 pipeline {
-    agent any
+    agent {
+        docker { image 'node:18-slim' }
+    }
 
     stages {
         stage('Checkout') {
