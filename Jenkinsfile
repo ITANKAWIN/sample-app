@@ -2,11 +2,6 @@
 pipeline {
     agent any
 
-    tools {
-        // ชื่อต้องตรงกับที่ตั้งใน Jenkins > Tools
-        sonarqube 'sonar-scanner-local'
-    }
-
     stages {
         stage('Checkout') {
             steps {
@@ -26,7 +21,7 @@ pipeline {
                 // กำหนดค่าให้ SonarQube Scanner
                 // สำหรับ POC นี้ เรายังไม่ใส่ Quality Gate
                 withSonarQubeEnv('sonarqube-local') {
-                    sh 'sonar-scanner -Dsonar.projectKey=sample-app-poc -Dsonar.sources=.'
+                    sh 'sonar-scanner -Dsonar.projectKey=sample-app -Dsonar.sources=.'
                 }
             }
         }
