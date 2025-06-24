@@ -11,36 +11,10 @@ pipeline {
         SONAR_PROJECT_KEY = 'sample-app'
         SONAR_PROJECT_NAME = 'Sample App POC'
         SONAR_HOST_URL = 'http://sonarqube:9000'
-
-        // Node.js configuration
-        NODE_VERSION = '18'
     }
 
     stages {
-        stage('Checkout') {
-            steps {
-                echo 'Checking out source code...'
-                checkout scm
-            }
-        }
-        stage('Install Dependencies') {
-            steps {
-                echo 'Installing Node.js dependencies using Docker...'
-                sh '''
-                    # Use Docker to run npm install
-                    docker run --rm -v ${PWD}:/app -w /app node:18-slim sh -c "npm cache clean --force && npm install"
-                '''
-            }
-        }
-        stage('Run Tests') {
-            steps {
-                echo 'Running application tests using Docker...'
-                sh '''
-                    # Use Docker to run tests
-                    docker run --rm -v ${PWD}:/app -w /app node:18-slim npm test
-                '''
-            }
-        }        stage('SonarQube Analysis') {
+        stage('SonarQube Analysis') {
             steps {
                 echo 'Running SonarQube analysis using Docker...'
                 sh '''
