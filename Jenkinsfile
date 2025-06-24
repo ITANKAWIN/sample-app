@@ -1,150 +1,264 @@
-// Jenkinsfile
 pipeline {
     agent any
-
+    
+    environment {
+        // Docker image configuration
+        DOCKER_IMAGE = 'sample-app'
+        DOCKER_TAG = "${BUILD_NUMBER}"
+        DOCKER_REGISTRY = 'localhost:5000' // หรือ registry ที่ต้องการใช้
+        
+        // SonarQube configuration
+        SONAR_SCANNER_HOME = tool 'SonarScanner'
+        SONAR_PROJECT_KEY = 'sample-app'
+        SONAR_PROJECT_NAME = 'Sample App POC'
+        SONAR_HOST_URL = 'http://sonarqube:9000'
+        
+        // Node.js configuration
+        NODE_VERSION = '18'
+    }
+    
+    tools {
+        nodejs "${NODE_VERSION}"
+    }
+    
     stages {
         stage('Checkout') {
             steps {
-                echo 'Checking out code...'
+                echo 'Checking out source code...'
                 checkout scm
             }
         }
-          stage('Install Dependencies') {
+        
+        stage('Install Dependencies') {
             steps {
-                echo 'Installing Node.js and dependencies...'
-                script {
-                    if (isUnix()) {
-                        // For Unix/Linux systems
-                        sh '''
-                            # Check if node is available, if not use docker
-                            if ! command -v node &> /dev/null; then
-                                echo "Node.js not found, using Docker..."
-                                docker run --rm -v $(pwd):/app -w /app node:18-slim npm install
-                            else
-                                echo "Using system Node.js..."
-                                npm install
-                            fi
-                        '''
-                    } else {
-                        // For Windows systems
-                        bat '''
-                            where node >nul 2>&1
-                            if %errorlevel% neq 0 (
-                                echo Node.js not found, using Docker...
-                                docker run --rm -v %cd%:/app -w /app node:18-slim npm install
-                            ) else (
-                                echo Using system Node.js...
-                                npm install
-                            )
-                        '''
-                    }
+                echo 'Installing Node.js dependencies...'
+                sh '''
+                    npm cache clean --force
+                    npm install
+                '''
+            }
+        }
+        
+        stage('Run Tests') {
+            steps {
+                echo 'Running application tests...'
+                sh '''
+                    npm test
+                '''
+            }
+            post {
+                always {
+                    // Archive test results if available
+                    publishTestResults testResultsPattern: 'test-results.xml'
                 }
             }
         }
-          stage('Run Tests') {
+        
+        stage('SonarQube Analysis') {
+            environment {
+                scannerHome = tool 'SonarScanner'
+            }
             steps {
-                echo 'Running tests...'
-                script {
-                    if (isUnix()) {
-                        sh '''
-                            if ! command -v node &> /dev/null; then
-                                echo "Running tests with Docker..."
-                                docker run --rm -v $(pwd):/app -w /app node:18-slim npm test || true
-                            else
-                                echo "Running tests with system Node.js..."
-                                npm test || true
-                            fi
-                        '''
-                    } else {
-                        bat '''
-                            where node >nul 2>&1
-                            if %errorlevel% neq 0 (
-                                echo Running tests with Docker...
-                                docker run --rm -v %cd%:/app -w /app node:18-slim npm test || echo "Tests completed"
-                            ) else (
-                                echo Running tests with system Node.js...
-                                npm test || echo "Tests completed"
-                            )
-                        '''
-                    }
+                echo 'Running SonarQube analysis...'
+                withSonarQubeEnv('SonarQube') {
+                    sh '''
+                        ${scannerHome}/bin/sonar-scanner \
+                        -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
+                        -Dsonar.projectName="${SONAR_PROJECT_NAME}" \
+                        -Dsonar.projectVersion=${BUILD_NUMBER} \
+                        -Dsonar.sources=. \
+                        -Dsonar.exclusions=node_modules/**,Dockerfile,Jenkinsfile,*.md,tests/** \
+                        -Dsonar.language=js \
+                        -Dsonar.sourceEncoding=UTF-8 \
+                        -Dsonar.host.url=${SONAR_HOST_URL}
+                    '''
                 }
             }
         }
-          stage('SonarQube Analysis') {
+        
+        stage('SonarQube Quality Gate') {
             steps {
-                script {
-                    echo 'Running SonarQube Analysis...'
-                    // Try different approaches for SonarQube scanning
-                    try {
-                        // Try with withSonarQubeEnv if configured
-                        withSonarQubeEnv('sq1') {
-                            if (isUnix()) {
-                                sh 'sonar-scanner || echo "SonarQube analysis failed but continuing..."'
-                            } else {
-                                bat 'sonar-scanner || echo "SonarQube analysis failed but continuing..."'
-                            }
-                        }
-                    } catch (Exception e) {
-                        echo "SonarQube withSonarQubeEnv failed: ${e.getMessage()}"
-                        // Fallback to manual sonar-scanner
-                        if (isUnix()) {
-                            sh '''
-                                echo "Trying manual sonar-scanner..."
-                                sonar-scanner \
-                                    -Dsonar.projectKey=sample-app \
-                                    -Dsonar.projectName="Sample App POC" \
-                                    -Dsonar.projectVersion=1.0 \
-                                    -Dsonar.sources=. \
-                                    -Dsonar.exclusions=node_modules/**,Dockerfile,Jenkinsfile,*.md \
-                                    -Dsonar.host.url=http://sonarqube:9000 || echo "Manual scanner also failed"
-                            '''
-                        } else {
-                            bat '''
-                                echo "Trying manual sonar-scanner..."
-                                sonar-scanner ^
-                                    -Dsonar.projectKey=sample-app ^
-                                    -Dsonar.projectName="Sample App POC" ^
-                                    -Dsonar.projectVersion=1.0 ^
-                                    -Dsonar.sources=. ^
-                                    -Dsonar.exclusions=node_modules/**,Dockerfile,Jenkinsfile,*.md ^
-                                    -Dsonar.host.url=http://sonarqube:9000 || echo "Manual scanner also failed"
-                            '''
-                        }
-                    }
+                echo 'Waiting for SonarQube Quality Gate...'
+                timeout(time: 5, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
                 }
-            }        }
+            }
+        }
         
         stage('Build Docker Image') {
             steps {
+                echo 'Building Docker image...'
                 script {
-                    def imageName = "poc-app:${env.BUILD_NUMBER}"
-                    echo "Building Docker image: ${imageName}"
+                    // Build Docker image
+                    def dockerImage = docker.build("${DOCKER_IMAGE}:${DOCKER_TAG}")
                     
-                    if (isUnix()) {
-                        sh "docker build -t ${imageName} ."
-                    } else {
-                        bat "docker build -t ${imageName} ."
-                    }
-                }
-            }        }
-    }
-      post {
-        always {
-            script {
-                echo 'Pipeline finished.'
-                // Clean workspace only if possible
-                try {
-                    cleanWs()
-                } catch (Exception e) {
-                    echo "Workspace cleanup skipped: ${e.getMessage()}"
+                    // Tag with latest
+                    sh "docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${DOCKER_IMAGE}:latest"
+                    
+                    // Store image info for later stages
+                    env.DOCKER_IMAGE_ID = dockerImage.id
                 }
             }
         }
-        success {
-            echo 'Pipeline completed successfully!'
+        
+        stage('Test Docker Image') {
+            steps {
+                echo 'Testing Docker image...'
+                script {
+                    // Run container and test if it starts properly
+                    sh '''
+                        # Start container in background
+                        docker run -d --name test-container-${BUILD_NUMBER} -p 3001:3000 ${DOCKER_IMAGE}:${DOCKER_TAG}
+                        
+                        # Wait for container to start
+                        sleep 10
+                        
+                        # Test if application is responding
+                        docker exec test-container-${BUILD_NUMBER} curl -f http://localhost:3000 || exit 1
+                        
+                        # Cleanup test container
+                        docker stop test-container-${BUILD_NUMBER}
+                        docker rm test-container-${BUILD_NUMBER}
+                    '''
+                }
+            }
         }
+        
+        stage('Security Scan') {
+            steps {
+                echo 'Running security scan on Docker image...'
+                script {
+                    // ใช้ Trivy สำหรับ security scanning (optional)
+                    sh '''
+                        # Install Trivy if not available
+                        if ! command -v trivy &> /dev/null; then
+                            echo "Trivy not found, skipping security scan"
+                        else
+                            trivy image --exit-code 0 --severity HIGH,CRITICAL ${DOCKER_IMAGE}:${DOCKER_TAG}
+                        fi
+                    '''
+                }
+            }
+        }
+        
+        stage('Push to Registry') {
+            when {
+                // Only push on main/master branch or when manually triggered
+                anyOf {
+                    branch 'main'
+                    branch 'master'
+                    expression { return params.FORCE_DEPLOY == true }
+                }
+            }
+            steps {
+                echo 'Pushing Docker image to registry...'
+                script {
+                    docker.withRegistry("http://${DOCKER_REGISTRY}") {
+                        def image = docker.image("${DOCKER_IMAGE}:${DOCKER_TAG}")
+                        image.push()
+                        image.push("latest")
+                    }
+                }
+            }
+        }
+        
+        stage('Deploy to Staging') {
+            when {
+                anyOf {
+                    branch 'main'
+                    branch 'master'
+                }
+            }
+            steps {
+                echo 'Deploying to staging environment...'
+                script {
+                    // Deploy using docker-compose or Kubernetes
+                    sh '''
+                        # Stop existing container if running
+                        docker stop sample-app-staging || true
+                        docker rm sample-app-staging || true
+                        
+                        # Run new container
+                        docker run -d \
+                            --name sample-app-staging \
+                            --restart unless-stopped \
+                            -p 3002:3000 \
+                            ${DOCKER_IMAGE}:${DOCKER_TAG}
+                        
+                        # Verify deployment
+                        sleep 5
+                        curl -f http://localhost:3002 || exit 1
+                    '''
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            echo 'Pipeline completed.'
+            
+            // Clean up workspace
+            cleanWs()
+            
+            // Remove dangling Docker images
+            sh '''
+                docker image prune -f
+            '''
+        }
+        
+        success {
+            echo 'Pipeline succeeded!'
+            
+            // Send success notification
+            emailext (
+                subject: "✅ Jenkins Build Success: ${env.JOB_NAME} - ${env.BUILD_NUMBER}",
+                body: """
+                    <h2>Build Successful!</h2>
+                    <p><strong>Project:</strong> ${env.JOB_NAME}</p>
+                    <p><strong>Build Number:</strong> ${env.BUILD_NUMBER}</p>
+                    <p><strong>Docker Image:</strong> ${DOCKER_IMAGE}:${DOCKER_TAG}</p>
+                    <p><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
+                """,
+                to: "${env.CHANGE_AUTHOR_EMAIL}",
+                mimeType: 'text/html'
+            )
+        }
+        
         failure {
             echo 'Pipeline failed!'
+            
+            // Send failure notification
+            emailext (
+                subject: "❌ Jenkins Build Failed: ${env.JOB_NAME} - ${env.BUILD_NUMBER}",
+                body: """
+                    <h2>Build Failed!</h2>
+                    <p><strong>Project:</strong> ${env.JOB_NAME}</p>
+                    <p><strong>Build Number:</strong> ${env.BUILD_NUMBER}</p>
+                    <p><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
+                    <p>Please check the build logs for more details.</p>
+                """,
+                to: "${env.CHANGE_AUTHOR_EMAIL}",
+                mimeType: 'text/html'
+            )
         }
+        
+        unstable {
+            echo 'Pipeline is unstable!'
+        }
+    }
+    
+    // Parameters for manual builds
+    parameters {
+        booleanParam(
+            name: 'FORCE_DEPLOY',
+            defaultValue: false,
+            description: 'Force deployment even if not on main/master branch'
+        )
+        choice(
+            name: 'LOG_LEVEL',
+            choices: ['INFO', 'DEBUG', 'ERROR'],
+            description: 'Log level for the build'
+        )
     }
 }

@@ -1,0 +1,174 @@
+pipeline {
+    agent any
+    
+    environment {
+        // Docker image configuration
+        DOCKER_IMAGE = 'sample-app'
+        DOCKER_TAG = "${BUILD_NUMBER}"
+        
+        // SonarQube configuration
+        SONAR_PROJECT_KEY = 'sample-app'
+        SONAR_PROJECT_NAME = 'Sample App POC'
+        SONAR_HOST_URL = 'http://localhost:9000'
+        
+        // Node.js configuration
+        NODE_VERSION = '18'
+    }
+    
+    tools {
+        nodejs "${NODE_VERSION}"
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                echo 'Checking out source code...'
+                checkout scm
+            }
+        }
+        
+        stage('Install Dependencies') {
+            steps {
+                echo 'Installing Node.js dependencies...'
+                bat '''
+                    npm cache clean --force
+                    npm install
+                '''
+            }
+        }
+        
+        stage('Run Tests') {
+            steps {
+                echo 'Running application tests...'
+                bat '''
+                    npm test
+                '''
+            }
+        }
+        
+        stage('SonarQube Analysis') {
+            environment {
+                scannerHome = tool 'SonarScanner'
+            }
+            steps {
+                echo 'Running SonarQube analysis...'
+                withSonarQubeEnv('SonarQube') {
+                    bat '''
+                        "%scannerHome%\\bin\\sonar-scanner.bat" ^
+                        -Dsonar.projectKey=%SONAR_PROJECT_KEY% ^
+                        -Dsonar.projectName="%SONAR_PROJECT_NAME%" ^
+                        -Dsonar.projectVersion=%BUILD_NUMBER% ^
+                        -Dsonar.sources=. ^
+                        -Dsonar.exclusions=node_modules/**,Dockerfile,Jenkinsfile*,*.md,tests/** ^
+                        -Dsonar.language=js ^
+                        -Dsonar.sourceEncoding=UTF-8 ^
+                        -Dsonar.host.url=%SONAR_HOST_URL%
+                    '''
+                }
+            }
+        }
+        
+        stage('SonarQube Quality Gate') {
+            steps {
+                echo 'Waiting for SonarQube Quality Gate...'
+                timeout(time: 5, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
+        
+        stage('Build Docker Image') {
+            steps {
+                echo 'Building Docker image...'
+                script {
+                    // Build Docker image
+                    bat "docker build -t %DOCKER_IMAGE%:%DOCKER_TAG% ."
+                    
+                    // Tag with latest
+                    bat "docker tag %DOCKER_IMAGE%:%DOCKER_TAG% %DOCKER_IMAGE%:latest"
+                }
+            }
+        }
+        
+        stage('Test Docker Image') {
+            steps {
+                echo 'Testing Docker image...'
+                script {
+                    bat '''
+                        @echo off
+                        REM Start container in background
+                        docker run -d --name test-container-%BUILD_NUMBER% -p 3001:3000 %DOCKER_IMAGE%:%DOCKER_TAG%
+                        
+                        REM Wait for container to start
+                        timeout /t 10
+                        
+                        REM Test if application is responding
+                        curl -f http://localhost:3001 || exit 1
+                        
+                        REM Cleanup test container
+                        docker stop test-container-%BUILD_NUMBER%
+                        docker rm test-container-%BUILD_NUMBER%
+                    '''
+                }
+            }
+        }
+        
+        stage('Deploy to Staging') {
+            when {
+                anyOf {
+                    branch 'main'
+                    branch 'master'
+                }
+            }
+            steps {
+                echo 'Deploying to staging environment...'
+                script {
+                    bat '''
+                        @echo off
+                        REM Stop existing container if running
+                        docker stop sample-app-staging 2>nul || echo Container not running
+                        docker rm sample-app-staging 2>nul || echo Container not found
+                        
+                        REM Run new container
+                        docker run -d --name sample-app-staging --restart unless-stopped -p 3002:3000 %DOCKER_IMAGE%:%DOCKER_TAG%
+                        
+                        REM Verify deployment
+                        timeout /t 5
+                        curl -f http://localhost:3002 || exit 1
+                    '''
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            echo 'Pipeline completed.'
+            
+            // Clean up workspace
+            cleanWs()
+            
+            // Remove dangling Docker images
+            bat '''
+                docker image prune -f
+            '''
+        }
+        
+        success {
+            echo 'Pipeline succeeded!'
+        }
+        
+        failure {
+            echo 'Pipeline failed!'
+        }
+    }
+    
+    // Parameters for manual builds
+    parameters {
+        booleanParam(
+            name: 'FORCE_DEPLOY',
+            defaultValue: false,
+            description: 'Force deployment even if not on main/master branch'
+        )
+    }
+}
