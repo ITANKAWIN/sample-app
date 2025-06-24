@@ -1,5 +1,5 @@
 pipeline {
-    agent 'my-windows-pc'
+    agent { label 'my-windows-pc' }
     
     environment {
         // Docker image configuration
