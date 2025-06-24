@@ -3,11 +3,13 @@
   "version": "1.0.0",
   "main": "app.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node app.js",
+    "test": "node tests/app.test.js",
+    "dev": "node app.js"
   },
   "author": "",
   "license": "ISC",
-  "description": "",
+  "description": "Sample Node.js application for Jenkins and SonarQube POC",
   "dependencies": {
     "express": "^5.1.0"
   }
