@@ -1,5 +1,5 @@
 pipeline {
-    agent { label 'my-windows-pc' }
+    agent any
     
     environment {
         // Docker image configuration
@@ -22,7 +22,8 @@ pipeline {
                 echo 'Checking out source code...'
                 checkout scm
             }
-        }        stage('Install Dependencies') {
+        }
+          stage('Install Dependencies') {
             steps {
                 echo 'Installing Node.js dependencies using Docker...'
                 sh '''
@@ -30,7 +31,8 @@ pipeline {
                     docker run --rm -v ${PWD}:/app -w /app node:18-slim sh -c "npm cache clean --force && npm install"
                 '''
             }
-        }        stage('Run Tests') {
+        }
+          stage('Run Tests') {
             steps {
                 echo 'Running application tests using Docker...'
                 sh '''
@@ -38,7 +40,8 @@ pipeline {
                     docker run --rm -v ${PWD}:/app -w /app node:18-slim npm test
                 '''
             }
-        }        stage('SonarQube Analysis') {
+        }
+          stage('SonarQube Analysis') {
             steps {
                 echo 'Running SonarQube analysis using Docker...'
                 sh '''
@@ -63,89 +66,12 @@ pipeline {
                 echo 'Quality Gate would be checked here in production'
             }
         }
-          stage('Build Docker Image') {
+        
+        stage('Build Summary') {
             steps {
-                echo 'Building Docker image...'
-                sh '''
-                    # Build Docker image using simple docker build
-                    docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} .
-                    
-                    # Tag with latest
-                    docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${DOCKER_IMAGE}:latest
-                    
-                    # List images to verify
-                    docker images | grep ${DOCKER_IMAGE}
-                '''
-            }
-        }
-          stage('Test Docker Image') {
-            steps {
-                echo 'Testing Docker image...'
-                sh '''
-                    # Start container in background
-                    docker run -d --name test-container-${BUILD_NUMBER} -p 3001:3000 ${DOCKER_IMAGE}:${DOCKER_TAG}
-                    
-                    # Wait for container to start
-                    sleep 15
-                    
-                    # Test if application is responding (using wget instead of curl)
-                    docker exec test-container-${BUILD_NUMBER} wget -q --spider http://localhost:3000 || exit 1
-                    
-                    # Alternative test using external access
-                    wget -q --spider http://localhost:3001 || echo "External access test failed, but container is running"
-                    
-                    # Cleanup test container
-                    docker stop test-container-${BUILD_NUMBER}
-                    docker rm test-container-${BUILD_NUMBER}
-                '''
-            }
-        }
-          stage('Security Scan') {
-            steps {
-                echo 'Skipping security scan for POC...'
-                echo 'In production, we would run Trivy or other security scanning tools here'
-            }
-        }
-          stage('Push to Registry') {
-            when {
-                anyOf {
-                    branch 'main'
-                    branch 'master'
-                    expression { return params.FORCE_DEPLOY == true }
-                }
-            }
-            steps {
-                echo 'Skipping push to registry for POC...'
-                echo 'In production, we would push to Docker registry here'
-                echo "Would push: ${DOCKER_IMAGE}:${DOCKER_TAG}"
-            }
-        }
-          stage('Deploy to Staging') {
-            when {
-                anyOf {
-                    branch 'main'
-                    branch 'master'
-                }
-            }
-            steps {
-                echo 'Deploying to staging environment...'
-                sh '''
-                    # Stop existing container if running
-                    docker stop sample-app-staging || true
-                    docker rm sample-app-staging || true
-                    
-                    # Run new container
-                    docker run -d \
-                        --name sample-app-staging \
-                        --restart unless-stopped \
-                        -p 3002:3000 \
-                        ${DOCKER_IMAGE}:${DOCKER_TAG}
-                    
-                    # Verify deployment
-                    sleep 10
-                    docker ps | grep sample-app-staging
-                    echo "Application deployed at http://localhost:3002"
-                '''
+                echo 'Build completed successfully!'
+                echo 'SonarQube analysis has been sent'
+                echo 'Check SonarQube dashboard at: http://localhost:9000'
             }
         }
     }
@@ -156,19 +82,13 @@ pipeline {
             // Clean up workspace
             cleanWs()
             
-            // Remove dangling Docker images (optional)
-            script {
-                try {
-                    sh 'docker image prune -f'
-                } catch (Exception e) {
-                    echo 'Failed to prune Docker images, continuing...'
-                }
-            }
+            // Skip Docker cleanup since we're not building images
+            echo 'Cleanup completed'
         }
-        
-        success {
+          success {
             echo 'Pipeline succeeded! 🎉'
-            echo "Docker image built: ${DOCKER_IMAGE}:${DOCKER_TAG}"
+            echo 'SonarQube analysis completed successfully'
+            echo 'Check your project at: http://localhost:9000/dashboard?id=sample-app'
         }
         
         failure {
