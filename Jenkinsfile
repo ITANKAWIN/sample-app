@@ -1,21 +1,21 @@
 pipeline {
     agent any
-    
+
     environment {
         // Docker image configuration
         DOCKER_IMAGE = 'sample-app'
         DOCKER_TAG = "${BUILD_NUMBER}"
         DOCKER_REGISTRY = 'localhost:5000'
-        
+
         // SonarQube configuration
         SONAR_PROJECT_KEY = 'sample-app'
         SONAR_PROJECT_NAME = 'Sample App POC'
         SONAR_HOST_URL = 'http://sonarqube:9000'
-        
+
         // Node.js configuration
         NODE_VERSION = '18'
     }
-    
+
     stages {
         stage('Checkout') {
             steps {
@@ -23,7 +23,7 @@ pipeline {
                 checkout scm
             }
         }
-          stage('Install Dependencies') {
+        stage('Install Dependencies') {
             steps {
                 echo 'Installing Node.js dependencies using Docker...'
                 sh '''
@@ -32,7 +32,7 @@ pipeline {
                 '''
             }
         }
-          stage('Run Tests') {
+        stage('Run Tests') {
             steps {
                 echo 'Running application tests using Docker...'
                 sh '''
@@ -40,8 +40,7 @@ pipeline {
                     docker run --rm -v ${PWD}:/app -w /app node:18-slim npm test
                 '''
             }
-        }
-          stage('SonarQube Analysis') {
+        }        stage('SonarQube Analysis') {
             steps {
                 echo 'Running SonarQube analysis using Docker...'
                 sh '''
@@ -59,14 +58,16 @@ pipeline {
                         -Dsonar.sourceEncoding=UTF-8
                 '''
             }
-        }        stage('SonarQube Quality Gate') {
+        }
+
+        stage('SonarQube Quality Gate') {
             steps {
                 echo 'Skipping SonarQube Quality Gate for POC...'
                 // สำหรับ POC เราข้าม Quality Gate ไปก่อน
                 echo 'Quality Gate would be checked here in production'
             }
         }
-        
+
         stage('Build Summary') {
             steps {
                 echo 'Build completed successfully!'
@@ -75,31 +76,31 @@ pipeline {
             }
         }
     }
-      post {
+    post {
         always {
             echo 'Pipeline completed.'
-            
+
             // Clean up workspace
             cleanWs()
-            
+
             // Skip Docker cleanup since we're not building images
             echo 'Cleanup completed'
         }
-          success {
+        success {
             echo 'Pipeline succeeded! 🎉'
             echo 'SonarQube analysis completed successfully'
             echo 'Check your project at: http://localhost:9000/dashboard?id=sample-app'
         }
-        
+
         failure {
             echo 'Pipeline failed! ❌'
         }
-        
+
         unstable {
             echo 'Pipeline is unstable! ⚠️'
         }
     }
-    
+
     // Parameters for manual builds
     parameters {
         booleanParam(
