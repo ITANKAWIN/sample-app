@@ -4,13 +4,58 @@
   "main": "app.js",
   "scripts": {
     "start": "node app.js",
-    "test": "node tests/app.test.js",
-    "dev": "node app.js"
+    "test": "jest --coverage --coverageReporters=text --coverageReporters=cobertura",
+    "test:unit": "jest",
+    "test:coverage": "jest --coverage",
+    "test:watch": "jest --watch",
+    "test:simple": "node tests/app.test.js",
+    "dev": "node app.js",
+    "lint": "eslint . --ext .js --format json --output-file eslint-report.json || true"
   },
-  "author": "",
-  "license": "ISC",
-  "description": "Sample Node.js application for Jenkins and SonarQube POC",
+  "author": "POC Team",
+  "license": "MIT",
+  "description": "Sample Node.js application for Jenkins and SonarQube POC with comprehensive test coverage",
   "dependencies": {
     "express": "^5.1.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "supertest": "^7.1.1"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "collectCoverageFrom": [
+      "*.js",
+      "!coverage/**",
+      "!node_modules/**",
+      "!jest.config.js",
+      "!.eslintrc.js",
+      "!Dockerfile",
+      "!Jenkinsfile",
+      "!*.config.js",
+      "!tests/**",
+      "!**/*.test.js",
+      "!**/*.spec.js"
+    ],
+    "coverageDirectory": "coverage",
+    "coverageReporters": [
+      "text",
+      "cobertura",
+      "html",
+      "lcov"
+    ],
+    "testMatch": [
+      "**/tests/**/*.js",
+      "**/?(*.)+(spec|test).js"
+    ],
+    "coveragePathIgnorePatterns": [
+      "/node_modules/",
+      "/coverage/",
+      "/.git/",
+      "/tests/",
+      "\\.eslintrc\\.js$",
+      "Dockerfile",
+      "Jenkinsfile"
+    ]
   }
 }
