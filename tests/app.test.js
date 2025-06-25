@@ -1,6 +1,7 @@
 // tests/app.test.js
 const request = require('supertest');
 const app = require('../app');
+const utils = require('../utils');
 
 describe('App Tests', () => {
   
@@ -270,6 +271,58 @@ describe('App Tests', () => {
     });
   });
 
+  // Test สำหรับ Complex Operation API (ที่มี security issues)
+  describe('Complex Operation API', () => {
+    test('POST /api/complex-operation should handle basic expression', async () => {
+      const operation = {
+        expression: '2 + 2',
+        data: '{"value": 50}'
+      };
+
+      const response = await request(app)
+        .post('/api/complex-operation')
+        .send(operation)
+        .expect(200);
+      
+      expect(response.body.result).toBe(4);
+    });
+
+    test('POST /api/complex-operation should handle errors gracefully', async () => {
+      const operation = {
+        expression: 'invalidExpression',
+        data: 'invalid json'
+      };
+
+      const response = await request(app)
+        .post('/api/complex-operation')
+        .send(operation)
+        .expect(500);
+      
+      expect(response.body.error).toBe('Something went wrong');
+    });
+  });
+
+  // Test สำหรับ Duplicate APIs
+  describe('Duplicate APIs', () => {
+    test('GET /api/duplicate1 should return data', async () => {
+      const response = await request(app)
+        .get('/api/duplicate1')
+        .expect(200);
+      
+      expect(Array.isArray(response.body)).toBe(true);
+      expect(response.body.length).toBe(2);
+    });
+
+    test('GET /api/duplicate2 should return same data', async () => {
+      const response = await request(app)
+        .get('/api/duplicate2')
+        .expect(200);
+      
+      expect(Array.isArray(response.body)).toBe(true);
+      expect(response.body.length).toBe(2);
+    });
+  });
+
   // Test สำหรับ Edge Cases
   describe('Edge Cases', () => {
     test('Should handle large numbers in calculation', async () => {
@@ -300,6 +353,62 @@ describe('App Tests', () => {
         .expect(200);
       
       expect(response.body.result).toBe(30);
+    });
+  });
+});
+
+// Test สำหรับ Utils functions
+describe('Utils Tests', () => {
+  describe('User Data Processing', () => {
+    test('should process valid user data', () => {
+      const result = utils.processUserData(
+        'John', 'Doe', 'john@example.com', '1234567890',
+        '123 Main St', 'City', '12345', 'Country', 30, 'M'
+      );
+      
+      expect(result).toBeDefined();
+      expect(result.name).toBe('John Doe');
+    });
+
+    test('should return null for invalid data', () => {
+      const result = utils.processUserData('John'); // Missing required params
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('Price Calculation', () => {
+    test('should calculate premium price', () => {
+      const price = utils.calculatePrice(100, 'premium');
+      expect(price).toBeGreaterThan(100);
+    });
+
+    test('should calculate discount price', () => {
+      const price = utils.calculatePrice(100, 'discount');
+      expect(price).toBeLessThan(100);
+    });
+  });
+
+  describe('Discount Rate', () => {
+    test('should return correct discount for customer types', () => {
+      expect(utils.getDiscountRate('regular')).toBe(0.05);
+      expect(utils.getDiscountRate('premium')).toBe(0.10);
+      expect(utils.getDiscountRate('invalid')).toBe(0.00);
+    });
+  });
+
+  describe('Value Comparison', () => {
+    test('should compare values', () => {
+      expect(utils.compareValues(5, 5)).toBe(true);
+      expect(utils.compareValues(5, '5')).toBe(true); // Shows == issue
+      expect(utils.compareValues(null, undefined)).toBe(false);
+    });
+  });
+
+  describe('Status Messages', () => {
+    test('should return correct status messages', () => {
+      expect(utils.getStatusMessage(200)).toBe('OK');
+      expect(utils.getStatusMessage(404)).toBe('Not Found');
+      expect(utils.getStatusMessage(999)).toBe('Unknown Status');
     });
   });
 });
