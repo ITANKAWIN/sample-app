@@ -13,14 +13,15 @@ pipeline {
         SONAR_HOST_URL = 'http://sonarqube:9000'
     }
 
-    stages {        stage('SonarQube Analysis') {
+    stages {        
+        stage('SonarQube Analysis') {
             steps {
                 script {
                     def scannerHome = tool 'SonarScanner' // ชื่อ tool ที่กำหนดใน Global Tool Configuration
                     withSonarQubeEnv('SonarQube') { // ชื่อ SonarQube server ที่กำหนดใน Configure System
-                        
+
                         def sonarProjectKey = 'sample-app' // ชื่อ Project ที่สร้างใน SonarQube
-                        
+
                         sh "${scannerHome}/bin/sonar-scanner -Dsonar.projectKey=${sonarProjectKey} -Dsonar.sources=. -Dsonar.exclusions=node_modules/**,Dockerfile,Jenkinsfile*,*.md,tests/** -Dsonar.projectName='${SONAR_PROJECT_NAME}' -Dsonar.projectVersion=${BUILD_NUMBER}"
                     }
                 }
@@ -42,7 +43,7 @@ pipeline {
                 echo 'Check SonarQube dashboard at: http://localhost:9000'
             }
         }
-    }
+}
     post {
         always {
             echo 'Pipeline completed.'
